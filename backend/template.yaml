@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  serverless-bell
+
+Parameters:
+  IndexFaceRekognitionCollection:
+    Type: String
+    Default: 'serverless-bell-faces-collection'
+  ResizeMaxWidth:
+    Type: Number
+    Default: 400
+  SlackUrl:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 10
+
+Resources:
+  IndexFace:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/index_face/
+      Handler: app.handler
+      Runtime: python3.8
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: s3:GetObject*
+              Resource: !Sub "arn:aws:s3:::serverless-bell-index-bucket-${AWS::AccountId}/*"
+            - Effect: Allow
+              Action: rekognition:IndexFaces
+              Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/${IndexFaceRekognitionCollection}"
+      Environment:
+        Variables:
+          REKOGNITION_COLLECTION: !Ref IndexFaceRekognitionCollection
+      Events:
+        IndexFaceS3Event:
+          Type: S3
+          Properties:
+            Bucket: !Ref FaceIndexUploadBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+  InitProcess:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/init_process/
+      Handler: app.handler
+      Runtime: python3.8
+      Policies:
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: !GetAtt ServerlessBellStateMachine.Name
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref ServerlessBellStateMachine
+      Events:
+        DetectFacesS3Event:
+          Type: S3
+          Properties:
+            Bucket: !Ref FaceDetectUploadBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+  DetectFaces:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/detect_faces/
+      Handler: app.handler
+      Runtime: python3.8
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: s3:GetObject*
+              Resource: !Sub "arn:aws:s3:::serverless-bell-upload-bucket-${AWS::AccountId}/*"
+            - Effect: Allow
+              Action:
+                - rekognition:DetectFaces
+                - rekognition:SearchFacesByImage
+              Resource: "*"
+      Environment:
+        Variables:
+          REKOGNITION_COLLECTION: !Ref IndexFaceRekognitionCollection
+  
+  ResizeImage:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/resize_image/
+      Handler: app.handler
+      Runtime: python3.8
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: 
+                - s3:GetObject*
+              Resource: !Sub "arn:aws:s3:::serverless-bell-upload-bucket-${AWS::AccountId}/*"
+            - Effect: Allow
+              Action: 
+                - s3:PutObject*
+              Resource: !Sub "arn:aws:s3:::serverless-bell-upload-bucket-${AWS::AccountId}/resized/*"
+      Environment:
+        Variables:
+          RESIZE_MAX_WIDTH: !Ref ResizeMaxWidth
+  AddWatermark:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/add_watermark/
+      Handler: app.handler
+      Runtime: python3.8
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: 
+                - s3:GetObject*
+              Resource: !Sub "arn:aws:s3:::serverless-bell-upload-bucket-${AWS::AccountId}/resized/*"
+            - Effect: Allow
+              Action: 
+                - s3:PutObject*
+              Resource: !Sub "arn:aws:s3:::serverless-bell-upload-bucket-${AWS::AccountId}/preview/*"
+  
+  SendToSlack:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/send_to_slack/
+      Handler: app.handler
+      Runtime: python3.8
+      Environment:
+        Variables:
+          REGION: !Sub ${AWS::Region}
+          SLACK_URL: !Ref SlackUrl
+
+  ServerlessBellStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: src/state_machine/state_machine.json
+      DefinitionSubstitutions:
+        DetectFacesFunctionArn: !GetAtt DetectFaces.Arn
+        ResizeImageFunctionArn: !GetAtt ResizeImage.Arn
+        AddWatermarkFunctionArn: !GetAtt AddWatermark.Arn
+        SendToSlackFunctionArn: !GetAtt SendToSlack.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DetectFaces
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ResizeImage
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AddWatermark
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SendToSlack
+
+  FaceIndexUploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "serverless-bell-index-bucket-${AWS::AccountId}"
+  FaceDetectUploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "serverless-bell-upload-bucket-${AWS::AccountId}"
+  FaceIndexErrorSNS:
+    Type: AWS::SNS::Topic
+
+Outputs:
+  FaceIndexUploadBucketName:
+    Description: "Face index upload bucket"
+    Value: !Ref FaceIndexUploadBucket
+  FaceDetectUploadBucketName:
+    Description: "Face detect upload bucket"
+    Value: !Ref FaceDetectUploadBucket
+  FaceIndexFunction:
+    Description: "FaceIndex Function"
+    Value: !GetAtt IndexFace.Arn
+  ProcessInitFunction:
+    Description: "Process init Function"
+    Value: !GetAtt InitProcess.Arn
+  DetectFacesFunction:
+    Description: "DetectFaces Function"
+    Value: !GetAtt DetectFaces.Arn
+  ResizeImageFunction:
+    Description: "ResizeImage Function"
+    Value: !GetAtt ResizeImage.Arn
+  AddWatermarkFunction:
+    Description: "AddWatermark Function"
+    Value: !GetAtt AddWatermark.Arn
+  SendToSlackFunction:
+    Description: "SendToSlack Function"
+    Value: !GetAtt SendToSlack.Arn
+  StateMachineArn:
+    Description: "State machine"
+    Value: !Ref ServerlessBellStateMachine
+  

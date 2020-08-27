@@ -1,0 +1,43 @@
+{
+    "Comment": "Serverless Bell State machine",
+    "StartAt": "Init",
+    "States": {
+      "Init": {
+        "Type": "Parallel",
+        "Next": "SendToSlack",
+        "Branches": [
+          {
+            "StartAt": "DetectFaces",
+            "States": {
+              "DetectFaces": {
+                "Type": "Task",
+                "Resource": "${DetectFacesFunctionArn}",
+                "End": true
+              }
+            }
+          },
+          {
+            "StartAt": "ResizeImage",
+            "States": {
+              "ResizeImage": {
+                "Type": "Task",
+                "Resource": "${ResizeImageFunctionArn}",
+                "Next": "AddWaterMark"
+              },
+              "AddWaterMark": {
+                "Type": "Task",
+                "Resource": "${AddWatermarkFunctionArn}",
+                "End": true
+              }
+            }
+          }
+        ]
+      },
+      "SendToSlack": {
+        "Type": "Task",
+        "Resource": "${SendToSlackFunctionArn}",
+        "End": true
+      }
+    }
+  }
+  
