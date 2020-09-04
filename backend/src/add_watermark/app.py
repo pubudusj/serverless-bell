@@ -27,7 +27,6 @@ def add_watermark(bucket, key):
     image.save(byte_array, format='PNG')
 
     # Save to bucket/location
-    print(str(uuid4()))
     new_path = 'preview/' + str(uuid4()) + '.png'
     s3.put_object(Bucket=bucket, Key=new_path, Body=byte_array.getvalue(), ACL='public-read')
 

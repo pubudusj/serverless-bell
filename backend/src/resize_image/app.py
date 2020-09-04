@@ -14,9 +14,6 @@ def resize_image(bucket, key, max_width):
     image_width = image.size[0]
     image_height = image.size[1]
 
-    print(image_width)
-    print(image_height)
-
     file_path, file_name = os.path.split(key)
     new_path = 'resized/' + file_name
 

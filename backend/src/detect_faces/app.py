@@ -26,7 +26,6 @@ def detect_faces(bucket, key):
         image = read_image_from_s3(bucket, key)
 
         # Crop each face from image
-        matched_faces = []
         for face in detect_faces['FaceDetails']:
             cropped_image = crop_face_from_image(face['BoundingBox'], image)
 
@@ -39,11 +38,15 @@ def detect_faces(bucket, key):
             for face in response['FaceMatches']:
                 matched_faces.append(face['Face']['ExternalImageId'].replace('_', ' '))
 
-    return {
-        'matched_faces': list(set(matched_faces)),
-        'total_faces_detected': len(detect_faces['FaceDetails'])
-    }
-
+            return {
+                'matched_faces': list(set(matched_faces)),
+                'total_faces_detected': len(detect_faces['FaceDetails'])
+            }
+    else:
+        return {
+            'matched_faces': [],
+            'total_faces_detected': 0
+        }
 
 def crop_face_from_image(box, image):
     image_width = image.size[0]

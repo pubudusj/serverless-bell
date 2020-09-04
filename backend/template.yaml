@@ -12,10 +12,18 @@ Parameters:
     Default: 400
   SlackUrl:
     Type: String
+  ApiGwStage:
+    Type: String
+    Default: 'dev'
+  PresignedUrlExpirySeconds:
+    Type: Number
+    Default: 60
 
 Globals:
   Function:
     Timeout: 10
+  Api:
+    OpenApiVersion: 3.0.1
 
 Resources:
   IndexFace:
@@ -47,6 +55,7 @@ Resources:
                 Rules:
                   - Name: prefix
                     Value: uploads/
+
   InitProcess:
     Type: AWS::Serverless::Function
     Properties:
@@ -70,6 +79,7 @@ Resources:
                 Rules:
                   - Name: prefix
                     Value: uploads/
+
   DetectFaces:
     Type: AWS::Serverless::Function
     Properties:
@@ -90,7 +100,7 @@ Resources:
       Environment:
         Variables:
           REKOGNITION_COLLECTION: !Ref IndexFaceRekognitionCollection
-  
+
   ResizeImage:
     Type: AWS::Serverless::Function
     Properties:
@@ -111,6 +121,7 @@ Resources:
       Environment:
         Variables:
           RESIZE_MAX_WIDTH: !Ref ResizeMaxWidth
+
   AddWatermark:
     Type: AWS::Serverless::Function
     Properties:
@@ -163,12 +174,86 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "serverless-bell-index-bucket-${AWS::AccountId}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - "PUT"
+              - "GET"
+            AllowedHeaders:
+              - "X-Forwarded-For"
+              - "x-amz-meta-user"
+            AllowedOrigins:
+              - "*"
+            MaxAge: 60
+
   FaceDetectUploadBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "serverless-bell-upload-bucket-${AWS::AccountId}"
+
   FaceIndexErrorSNS:
     Type: AWS::SNS::Topic
+  
+  FaceIndexHostingS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: 404.html
+  
+  FaceIndexHostingS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      PolicyDocument:
+        Id: FaceIndexHostingS3BucketPolicy
+        Version: 2012-10-17
+        Statement:
+          - Sid: PublicReadForGetBucketObjects
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Join 
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref FaceIndexHostingS3Bucket
+                - /*
+      Bucket: !Ref FaceIndexHostingS3Bucket
+
+  FaceIndexFileUploadApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref ApiGwStage
+      Cors:
+        AllowMethods: "'OPTIONS,POST,GET'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+      EndpointConfiguration: REGIONAL
+
+  GeneratePresignedUrl:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/generate_presigned_url/
+      Handler: app.index
+      Runtime: python3.8
+      Environment:
+        Variables:
+          S3BUCKET: 
+            Ref: FaceIndexUploadBucket
+          EXPIRY_TIME: 
+            Ref: PresignedUrlExpirySeconds
+      Policies:
+        - S3WritePolicy:
+            BucketName:
+              Ref: FaceIndexUploadBucket
+      Events:
+        GenerateUrlApi:
+          Type: Api
+          Properties:
+            Path: /presigned_generate
+            Method: post
+            RestApiId:
+              Ref: FaceIndexFileUploadApiGatewayApi
 
 Outputs:
   FaceIndexUploadBucketName:
@@ -198,4 +283,12 @@ Outputs:
   StateMachineArn:
     Description: "State machine"
     Value: !Ref ServerlessBellStateMachine
-  
+  GeneratePresignedUrl:
+    Description: "API Gateway endpoint for generate presigned url"
+    Value: !Sub "https://${FaceIndexFileUploadApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGwStage}/presigned_generate/"
+  FaceIndexHostingS3Bucket:
+    Value: !Ref FaceIndexHostingS3Bucket
+    Description: Face Index Website hosted bucket name
+  FaceIndexWebsiteURL:
+    Value: !GetAtt FaceIndexHostingS3Bucket.WebsiteURL
+    Description: Face Index web site URL
