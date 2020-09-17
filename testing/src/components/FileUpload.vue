@@ -119,6 +119,7 @@ export default {
         })
     },
     resetForm () {
+      this.uploadedFile = null
       this.$refs.form.reset()
     }
   }
