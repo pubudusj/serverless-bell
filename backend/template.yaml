@@ -18,6 +18,14 @@ Parameters:
   PresignedUrlExpirySeconds:
     Type: Number
     Default: 60
+  CreateTestingFunction:
+    Type: String
+    Default: true
+    AllowedValues: [true, false]
+
+Conditions:
+  ShouldCreateTestingFunctionality:
+    !Equals [true, !Ref CreateTestingFunction]
 
 Globals:
   Function:
@@ -190,6 +198,15 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "serverless-bell-upload-bucket-${AWS::AccountId}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods:
+              - "PUT"
+            AllowedHeaders:
+              - "X-Forwarded-For"
+            AllowedOrigins:
+              - "*"
+            MaxAge: 60
 
   FaceIndexErrorSNS:
     Type: AWS::SNS::Topic
@@ -254,6 +271,31 @@ Resources:
             Method: post
             RestApiId:
               Ref: FaceIndexFileUploadApiGatewayApi
+  GeneratePresignedUrlForTesting:
+    Type: AWS::Serverless::Function
+    Condition: ShouldCreateTestingFunctionality
+    Properties:
+      CodeUri: src/generate_presigned_url_testing/
+      Handler: app.index
+      Runtime: python3.8
+      Environment:
+        Variables:
+          S3BUCKET: 
+            Ref: FaceDetectUploadBucket
+          EXPIRY_TIME: 
+            Ref: PresignedUrlExpirySeconds
+      Policies:
+        - S3WritePolicy:
+            BucketName:
+              Ref: FaceDetectUploadBucket
+      Events:
+        GenerateUrlApi:
+          Type: Api
+          Properties:
+            Path: /presigned_generate_testing
+            Method: post
+            RestApiId:
+              Ref: FaceIndexFileUploadApiGatewayApi
 
 Outputs:
   FaceIndexUploadBucketName:
@@ -286,6 +328,9 @@ Outputs:
   GeneratePresignedUrl:
     Description: "API Gateway endpoint for generate presigned url"
     Value: !Sub "https://${FaceIndexFileUploadApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGwStage}/presigned_generate/"
+  GeneratePresignedUrlForTesting:
+    Description: "API Gateway endpoint for generate presigned url test functionality"
+    Value: !Sub "https://${FaceIndexFileUploadApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGwStage}/presigned_generate_testing/"
   FaceIndexHostingS3Bucket:
     Value: !Ref FaceIndexHostingS3Bucket
     Description: Face Index Website hosted bucket name
