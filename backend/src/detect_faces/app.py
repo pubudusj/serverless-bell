@@ -35,13 +35,13 @@ def detect_faces(bucket, key):
                 Image={'Bytes': cropped_image}
             )
 
-            for face in response['FaceMatches']:
-                matched_faces.append(face['Face']['ExternalImageId'].replace('_', ' '))
+            if len(response['FaceMatches']) > 0:
+                matched_faces.append(response['FaceMatches'][0]['Face']['ExternalImageId'].replace('_', ' '))
 
-            return {
-                'matched_faces': list(set(matched_faces)),
-                'total_faces_detected': len(detect_faces['FaceDetails'])
-            }
+        return {
+            'matched_faces': list(set(matched_faces)),
+            'total_faces_detected': len(detect_faces['FaceDetails'])
+        }
     else:
         return {
             'matched_faces': [],
