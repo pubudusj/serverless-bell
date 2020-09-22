@@ -20,12 +20,12 @@ Parameters:
     Default: 60
   CreateTestingFunction:
     Type: String
-    Default: true
-    AllowedValues: [true, false]
+    Default: 'True'
+    AllowedValues: ['True', 'False']
 
 Conditions:
   ShouldCreateTestingFunctionality:
-    !Equals [true, !Ref CreateTestingFunction]
+    !Equals ['True', !Ref CreateTestingFunction]
 
 Globals:
   Function:
