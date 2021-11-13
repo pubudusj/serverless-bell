@@ -18,7 +18,7 @@ def arrange_message(data):
         if len(data['matched_faces']) > 0:
             message += 'And I can recognize ' + ', '.join(data['matched_faces']) + '.'
     else:
-        message =+ 'Sorry I cannot see any people.'
+        message = 'Sorry I cannot see any people.'
         
     return message
 
