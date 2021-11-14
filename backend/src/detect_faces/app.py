@@ -19,9 +19,11 @@ def detect_faces(bucket, key):
                 'Name': key
             }
         },
+        Attributes=['ALL']
     )
 
     matched_faces = []
+    sentiment = []
     if detect_faces['FaceDetails']:
         image = read_image_from_s3(bucket, key)
 
@@ -37,10 +39,12 @@ def detect_faces(bucket, key):
 
             if len(response['FaceMatches']) > 0:
                 matched_faces.append(response['FaceMatches'][0]['Face']['ExternalImageId'].replace('_', ' '))
+                sentiment.append(face['Emotions'][0]['Type'].lower())
 
         return {
             'matched_faces': list(set(matched_faces)),
-            'total_faces_detected': len(detect_faces['FaceDetails'])
+            'total_faces_detected': len(detect_faces['FaceDetails']),
+            'sentiment': list(sentiment)
         }
     else:
         return {

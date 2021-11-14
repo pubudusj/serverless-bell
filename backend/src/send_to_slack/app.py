@@ -16,9 +16,14 @@ def arrange_message(data):
         message += 'I can see ' + str(total_faces)
         message += ' people. ' if total_faces > 1 else ' person. '
         if len(data['matched_faces']) > 0:
-            message += 'And I can recognize ' + ', '.join(data['matched_faces']) + '.'
+            message += 'And I can recognize ' + ', '.join(data['matched_faces']) + '. '
+            if len(data['matched_faces']) == len(data['sentiment']) :
+                k = 0
+                for face in data['matched_faces']:
+                    message += face + ' looks ' + data['sentiment'][k] + '. '
+                    k += 1
     else:
-        message =+ 'Sorry I cannot see any people.'
+        message = 'Sorry I cannot see any people.'
         
     return message
 
